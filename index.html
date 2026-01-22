@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockchain Pelaporan Desa Limbangan Kulon</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: #333; }
+        .container { background: white; border-radius: 15px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); overflow: hidden; }
+        header { background: linear-gradient(45deg, #2E7D32, #4CAF50); color: white; padding: 25px; text-align: center; }
+        .header-title { font-size: 2.2em; margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .subtitle { font-size: 1.1em; opacity: 0.95; margin: 5px 0 0; }
+        .form-section, .ledger-section { padding: 30px; }
+        input, textarea, select, button { width: 100%; padding: 14px; margin: 12px 0; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; transition: border-color 0.3s; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #4CAF50; }
+        button { background: linear-gradient(45deg, #4CAF50, #45a049); color: white; border: none; cursor: pointer; font-weight: bold; font-size: 16px; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(76,175,80,0.4); }
+        .block { background: #f8fff8; border: 2px solid #e8f5e8; border-radius: 10px; padding: 25px; margin: 20px 0; position: relative; transition: all 0.3s; }
+        .block:hover { box-shadow: 0 5px 20px rgba(0,0,0,0.1); transform: translateY(-3px); }
+        .block::before { content: '🔗'; position: absolute; left: -18px; top: 25px; background: #4CAF50; color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+        .hash { font-family: 'Courier New', monospace; background: linear-gradient(90deg, #e3f2fd, #bbdefb); padding: 10px; border-radius: 6px; font-size: 13px; word-break: break-all; margin: 8px 0; border-left: 4px solid #2196F3; }
+        .status-baru { border-left-color: #FF9800; }
+        .status-diproses { border-left-color: #2196F3; }
+        .status-selesai { border-left-color: #4CAF50; }
+        #map { height: 280px; border-radius: 8px; margin: 15px 0; border: 2px solid #ddd; }
+        .verified { color: #4CAF50; font-weight: bold; font-size: 1.1em; }
+        .controls { display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; }
+        @media (max-width: 768px) { .controls { flex-direction: column; } }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 class="header-title">🟢 Website Desa Limbangan Kulon</h1>
+            <p class="subtitle"><strong>Transparansi Total • Immutable • Akses Publik</strong><br>Sistem Pelaporan Digital Desa Limbangan Kulon Brebes</p>
+        </header>
+
+        <div class="form-section">
+            <h2>📝 Laporkan Masalah Desa Limbangan Kulon</h2>
+            <input type="text" id="judul" placeholder="Contoh: Jalan Rusak di RT 03 RW 02 Limbangan Kulon">
+            <textarea id="deskripsi" rows="4" placeholder="Jelaskan masalah secara detail (lokasi spesifik, dampak, dll)..."></textarea>
+            <select id="kategori">
+                <option value="infrastruktur">🛣️ Infrastruktur (Jalan/Banjir/Jembatan)</option>
+                <option value="pertanian">🌾 Pertanian & Irigasi</option>
+                <option value="kesehatan">🏥 Kesehatan & Sanitasi</option>
+                <option value="pendidikan">📚 Pendidikan</option>
+                <option value="keamanan">👮 Keamanan & Ketertiban</option>
+                <option value="lainnya">📋 Lainnya</option>
+            </select>
+            <input type="file" id="foto" accept="image/*">
+            <button onclick="tambahBlok()">🚀 Tambah ke Data laporan Limbangan Kulon</button>
+            <div id="map"></div>
+            <small>📍 GPS otomatis mendeteksi lokasi di Desa Limbangan Kulon. Data tersimpan aman & transparan.</small>
+        </div>
+
+        <div class="ledger-section">
+            <h2>🔍 Public Ledger Desa Limbangan Kulon</h2>
+            <div class="controls">
+                <select id="filter" onchange="renderChain()">
+                    <option value="all">⛓️ Semua Blok (Chain Lengkap)</option>
+                    <option value="baru">🆕 Status: Baru</option>
+                    <option value="diproses">⚙️ Status: Diproses</option>
+                    <option value="selesai">✅ Status: Selesai</option>
+                </select>
+                <button onclick="verifikasiChain()">🔍 Verifikasi Integrity Chain</button>
+                <button onclick="clearChain()" style="background: #f44336;" onclick="return confirm('Hapus semua data? (Reset Genesis Block)')">🗑️ Reset Chain</button>
+                <span id="chainStatus" class="verified" style="margin-left: auto; font-size: 1em;"></span>
+            </div>
+            <div id="chain"></div>
+        </div>
+    </div>
+
+    <script>
+        let chain = JSON.parse(localStorage.getItem('limbanganKulonChain')) || [];
+        const desaCenter = [-6.8667, 109.0167]; // Koordinat Brebes/Limbangan area
+        let map = L.map('map').setView(desaCenter, 14);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap | Desa Limbangan Kulon'
+        }).addTo(map);
+
+        // GPS untuk Desa Limbangan Kulon
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                map.setView(loc, 16);
+                L.marker(loc).addTo(map).bindPopup('📍 Lokasi Anda - Desa Limbangan Kulon');
+                L.circle(loc, {radius: 100}).addTo(map);
+            }, () => map.setView(desaCenter, 14));
+        }
+
+        async function hitungHash(data) {
+            const msgUint8 = new TextEncoder().encode(JSON.stringify(data, Object.keys(data).sort()));
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
+        }
+
+        async function tambahBlok() {
+            const judul = document.getElementById('judul').value.trim();
+            const deskripsi = document.getElementById('deskripsi').value.trim();
+            const kategori = document.getElementById('kategori').value;
+            const fotoFile = document.getElementById('foto').files[0];
+            
+            if (!judul || !deskripsi) {
+                alert('❌ Lengkapi judul dan deskripsi laporan!');
+                return;
+            }
+
+            let fotoDataUrl = null;
+            if (fotoFile) {
+                fotoDataUrl = await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve(e.target.result);
+                    reader.readAsDataURL(fotoFile);
+                });
+            }
+
+            const lokasi = map.getCenter();
+            const dataBlok = {
+                desa: "Limbangan Kulon",
+                judul, deskripsi, kategori, foto: fotoDataUrl,
+                status: 'baru', timestamp: Date.now(),
+                lokasi: { lat: lokasi.lat, lng: lokasi.lng }
+            };
+
+            const prevHash = chain.length ? chain[chain.length-1].hash : 'genesis_limbangan_kulon_2026';
+            const blokLengkap = { 
+                index: chain.length + 1, 
+                data: dataBlok, 
+                prevHash, 
+                timestamp: new Date().toLocaleString('id-ID') 
+            };
+            blokLengkap.hash = await hitungHash(blokLengkap);
+
+            chain.push(blokLengkap);
+            localStorage.setItem('limbanganKulonChain', JSON.stringify(chain));
+            renderChain();
+            
+            document.getElementById('judul').value = '';
+            document.getElementById('deskripsi').value = '';
+            document.getElementById('foto').value = '';
+            alert(`✅ Blok #${blokLengkap.index} ditambahkan!
+Hash: ${blokLengkap.hash.slice(0,16)}...`);
+        }
+
+        function renderChain(filter = 'all') {
+            const container = document.getElementById('chain');
+            const blokFiltered = filter === 'all' ? chain : chain.filter(b => b.data.status === filter);
+            
+            container.innerHTML = blokFiltered.map((blok) => {
+                const statusClass = `status-${blok.data.status}`;
+                const fotoHtml = blok.data.foto ? `<img src="${blok.data.foto}" style="max-width:180px;max-height:140px;border-radius:8px;margin:10px 0;">` : '';
+                const lokasiStr = `📍 ${blok.data.lokasi.lat.toFixed(4)}, ${blok.data.lokasi.lng.toFixed(4)}`;
+                
+                return `
+                    <div class="block ${statusClass}">
+                        <h3>Blok #${blok.index} 🟢 ${blok.data.judul}</h3>
+                        <p><strong>${lokasiStr}</strong> | <strong>${blok.data.kategori}</strong></p>
+                        <p style="line-height:1.5;">${blok.data.deskripsi}</p>
+                        ${fotoHtml}
+                        <div class="hash">🔑 Hash: ${blok.hash.slice(0,32)}...</div>
+                        <div class="hash">🔗 Previous: ${blok.prevHash.slice(0,32)}...</div>
+                        <p><em>📅 ${blok.timestamp} | Desa: ${blok.data.desa}</em></p>
+                        <select onchange="updateStatus(${chain.indexOf(blok)}, this.value)" style="width:150px;padding:8px;">
+                            <option ${blok.data.status==='baru'?'selected':''}>🆕 baru</option>
+                            <option ${blok.data.status==='diproses'?'selected':''}>⚙️ diproses</option>
+                            <option ${blok.data.status==='selesai'?'selected':''}>✅ selesai</option>
+                        </select>
+                    </div>
+                `;
+            }).reverse().join('');
+        }
+
+        async function updateStatus(idx, statusBaru) {
+            chain[idx].data.status = statusBaru;
+            for (let i = idx; i < chain.length; i++) {
+                const prevHash = i > 0 ? chain[i-1].hash : 'genesis_limbangan_kulon_2026';
+                chain[i].prevHash = prevHash;
+                chain[i].hash = await hitungHash(chain[i]);
+            }
+            localStorage.setItem('limbanganKulonChain', JSON.stringify(chain));
+            renderChain();
+        }
+
+        async function verifikasiChain() {
+            let valid = true;
+            for (let i = 1; i < chain.length; i++) {
+                const currHash = await hitungHash(chain[i]);
+                if (chain[i].hash !== currHash || chain[i].prevHash !== chain[i-1].hash) {
+                    valid = false; break;
+                }
+            }
+            const statusEl = document.getElementById('chainStatus');
+            statusEl.textContent = valid ? '✅ CHAIN LIMBANGAN KULON VALID 100%' : '❌ CHAIN TELAH DI MANIPULASI!';
+            statusEl.style.color = valid ? '#4CAF50' : '#f44336';
+        }
+
+        function clearChain() {
+            chain = [];
+            localStorage.removeItem('limbanganKulonChain');
+            renderChain();
+            alert('🔄 Chain direset ke Genesis Block!');
+        }
+
+        renderChain();
+    </script>
+</body>
+  </html>
